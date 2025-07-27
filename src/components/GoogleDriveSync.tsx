@@ -11,15 +11,23 @@ const GoogleIcon = () => (
     </svg>
 );
 
-const SaveIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+const SaveIcon = () => ( // Floppy Disk / "Discette" Icon
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17 21V13H7v8" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 3V8h8" />
     </svg>
 );
 
-const LoadIcon = () => (
-     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+const LoadIcon = () => ( // Import / Download from Cloud Icon
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+);
+
+const ErrorIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-red-500" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
     </svg>
 );
 
@@ -30,39 +38,20 @@ const GoogleDriveSync: React.FC<{ isExpanded: boolean }> = ({ isExpanded }) => {
     
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-    const showStatus = (message: string, duration: number = 3000) => {
-        setStatusMessage(message);
-        setTimeout(() => setStatusMessage(null), duration);
-    };
 
     const handleSave = async () => {
         setIsSaving(true);
-        setStatusMessage(null);
         // Use the same `partialize` function from the persist middleware to get only the data we want to save.
         const stateToSave = useSimulationStore.persist.getOptions().partialize!(useSimulationStore.getState());
-        const success = await saveFile(stateToSave);
-        if (success) {
-            showStatus('Scene saved successfully!');
-        } else {
-            showStatus('Save failed. Check console for errors.');
-        }
+        await saveFile(stateToSave);
         setIsSaving(false);
     };
 
     const handleLoad = async () => {
         setIsLoading(true);
-        setStatusMessage(null);
         const loadedState = await loadFile();
         if (loadedState && typeof loadedState === 'object') {
             rehydrateFromExternal(loadedState);
-            showStatus('Scene loaded successfully!');
-        } else {
-            // Error messages are handled by the hook and displayed. If no state is found, it's also handled.
-            if (!error) {
-              showStatus('Load failed or no save file found.');
-            }
         }
         setIsLoading(false);
     };
@@ -121,19 +110,24 @@ const GoogleDriveSync: React.FC<{ isExpanded: boolean }> = ({ isExpanded }) => {
                         onClick={handleLoad}
                         disabled={isSaving || isLoading}
                         title="Load from Google Drive"
-                        className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-wait"
+                        className="p-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-wait shadow-sm"
                     >
-                        {isLoading ? <div className="w-6 h-6 border-2 border-white border-solid border-t-transparent rounded-full animate-spin"></div> : <LoadIcon />}
+                        {isLoading ? <div className="w-6 h-6 border-2 border-slate-500 border-solid border-t-transparent rounded-full animate-spin"></div> : <LoadIcon />}
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
                         title="Save to Google Drive"
-                        className="p-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-wait"
+                        className="p-2 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-wait shadow-sm"
                     >
-                        {isSaving ? <div className="w-6 h-6 border-2 border-white border-solid border-t-transparent rounded-full animate-spin"></div> : <SaveIcon />}
+                        {isSaving ? <div className="w-6 h-6 border-2 border-slate-500 border-solid border-t-transparent rounded-full animate-spin"></div> : <SaveIcon />}
                     </button>
                 </div>
+                {error && (
+                    <div title={error} className="mt-2">
+                        <ErrorIcon />
+                    </div>
+                )}
             </div>
         )
     }
@@ -155,16 +149,16 @@ const GoogleDriveSync: React.FC<{ isExpanded: boolean }> = ({ isExpanded }) => {
                     <button
                         onClick={handleLoad}
                         disabled={isSaving || isLoading}
-                        className="flex items-center justify-center gap-2 bg-green-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-wait"
+                        className="flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-700 font-medium px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-wait"
                     >
-                        {isLoading ? <div className="w-5 h-5 border-2 border-white border-solid border-t-transparent rounded-full animate-spin"></div> : <><LoadIcon /> Load</>}
+                        {isLoading ? <div className="w-5 h-5 border-2 border-slate-500 border-solid border-t-transparent rounded-full animate-spin"></div> : <><LoadIcon /> Load</>}
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold px-4 py-2 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-wait"
+                        className="flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-700 font-medium px-4 py-2 rounded-lg shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-200 disabled:opacity-50 disabled:cursor-wait"
                     >
-                       {isSaving ? <div className="w-5 h-5 border-2 border-white border-solid border-t-transparent rounded-full animate-spin"></div> : <><SaveIcon /> Save</>} 
+                       {isSaving ? <div className="w-5 h-5 border-2 border-slate-500 border-solid border-t-transparent rounded-full animate-spin"></div> : <><SaveIcon /> Save</>} 
                     </button>
                 </div>
                  <button
@@ -174,9 +168,9 @@ const GoogleDriveSync: React.FC<{ isExpanded: boolean }> = ({ isExpanded }) => {
                     Sign Out
                 </button>
             </div>
-             {(error || statusMessage) && (
-                <p className={`text-sm text-center p-2 rounded-md ${error ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                    {error || statusMessage}
+             {error && (
+                <p className="text-sm text-center p-2 rounded-md bg-red-100 text-red-700">
+                    {error}
                 </p>
             )}
         </div>

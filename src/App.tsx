@@ -4,13 +4,13 @@ import DateSlider from './components/DateSlider';
 import TimeSlider from './components/TimeSlider';
 import CompassDisplay from './components/CompassDisplay';
 import ControlPanel from './components/ControlPanel';
-import TransparencySlider from './components/TransparencySlider';
 import SunlightChart from './components/SunlightChart';
 import SceneViewer from './components/SceneViewer';
 import useSimulationStore from './stores/useSimulationStore';
 import LoadingSpinner from './components/LoadingSpinner';
 import ModelLoader from './components/ModelLoader';
 import DateTimeDisplay from './components/DateTimeDisplay';
+import LocationDisplay from './components/GeolocationInitializer';
 
 function App() {
   const [isChartExpanded, setIsChartExpanded] = useState(false);
@@ -68,6 +68,9 @@ function App() {
             {/* Date/Time Display */}
             <DateTimeDisplay />
 
+            {/* Location Display */}
+            <LocationDisplay />
+
             {/* Sunlight Chart Toggle - Bottom-left of scene */}
             <SunlightChart
               isExpanded={isChartExpanded}
@@ -80,7 +83,6 @@ function App() {
                 isChartExpanded ? 'bottom-[241px]' : 'bottom-4'
               }`}
             >
-              <TransparencySlider />
               <CompassDisplay />
             </div>
           </div>
