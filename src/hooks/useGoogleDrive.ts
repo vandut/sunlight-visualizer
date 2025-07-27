@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { GOOGLE_API_KEY, GOOGLE_CLIENT_ID } from '../../config';
+import { GOOGLE_CLIENT_ID } from '../../config';
 
-// TypeScript definitions for Google API Client
+// TypeScript definitions for Google Identity Services
 declare global {
   interface Window {
-    gapi: any;
-    google: any; // For Google Identity Services
+    google: any; 
   }
 }
 
-const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 const FILENAME = 'sunlight-visualizer-state.json';
 
@@ -20,19 +18,23 @@ interface UserProfile {
 }
 
 export const useGoogleDrive = () => {
-  const [gapiReady, setGapiReady] = useState(false);
   const [gisReady, setGisReady] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const fetchUserProfile = useCallback(async () => {
+  const fetchUserProfile = useCallback(async (token: string) => {
     try {
-      const response = await window.gapi.client.request({
-        'path': 'https://www.googleapis.com/oauth2/v3/userinfo'
+      const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      const profile = response.result;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to fetch user profile');
+      }
+      const profile = await response.json();
       setUserProfile({
         email: profile.email,
         name: profile.name,
@@ -40,7 +42,7 @@ export const useGoogleDrive = () => {
       });
     } catch (e: any) {
       console.error("Error fetching user profile", e);
-      setError(`Could not fetch user profile. Error: ${e.result?.error?.message || e.message}`);
+      setError(`Could not fetch user profile. Error: ${e.message}`);
     }
   }, []);
 
@@ -54,12 +56,15 @@ export const useGoogleDrive = () => {
                 callback: async (tokenResponse: any) => {
                     if (tokenResponse.error) {
                         setError(`Auth Error: ${tokenResponse.error_description || tokenResponse.error}`);
+                        setAccessToken(null);
+                        setIsSignedIn(false);
                         return;
                     }
-                    window.gapi.client.setToken(tokenResponse);
+                    const token = tokenResponse.access_token;
+                    setAccessToken(token);
                     setIsSignedIn(true);
                     setError(null);
-                    await fetchUserProfile();
+                    await fetchUserProfile(token);
                 },
             });
             setTokenClient(client);
@@ -79,58 +84,44 @@ export const useGoogleDrive = () => {
     return () => clearInterval(checkGis);
   }, [fetchUserProfile]);
 
-  // Effect to initialize the Google API (GAPI) client for Drive
-  useEffect(() => {
-    const gapiInit = async () => {
-      try {
-        await new Promise<void>((resolve) => window.gapi.load('client', resolve));
-        await window.gapi.client.init({
-          apiKey: GOOGLE_API_KEY,
-          discoveryDocs: DISCOVERY_DOCS,
-        });
-        setGapiReady(true);
-      } catch (e: any) {
-        setError(`Google API client failed to load: ${e.message}`);
-      }
-    };
-
-    const checkGapi = setInterval(() => {
-        if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
-            clearInterval(checkGapi);
-            gapiInit();
-        }
-    }, 100);
-
-    return () => clearInterval(checkGapi);
-  }, []);
-
   const signIn = () => {
     if (!tokenClient) {
         setError('Google Auth is not ready.');
         return;
     }
     setError(null);
-    // An empty prompt string triggers the default user experience.
     tokenClient.requestAccessToken({ prompt: '' });
   };
 
   const signOut = () => {
-    // Clear the token from the GAPI client
-    window.gapi.client.setToken(null);
+    if (accessToken) {
+      // Revoke the token to effectively sign out
+      window.google.accounts.oauth2.revoke(accessToken, () => {});
+    }
+    setAccessToken(null);
     setIsSignedIn(false);
     setUserProfile(null);
     setError(null);
   };
 
-  const findFileId = async (): Promise<string | null> => {
+  const findFileId = async (token: string): Promise<string | null> => {
     try {
-      const response = await window.gapi.client.drive.files.list({
+      const queryParams = new URLSearchParams({
         spaces: 'appDataFolder',
         fields: 'files(id, name)',
         q: `name='${FILENAME}' and trashed=false`,
       });
-      const files = response.result.files;
-      return files && files.length > 0 ? files[0].id : null;
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files?${queryParams.toString()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to search for file');
+      }
+
+      const data = await response.json();
+      return data.files && data.files.length > 0 ? data.files[0].id : null;
     } catch (e: any) {
        console.error("Error finding file", e);
        setError('Could not search for the file in Google Drive.');
@@ -140,13 +131,13 @@ export const useGoogleDrive = () => {
 
   const saveFile = async (content: object): Promise<boolean> => {
     setError(null);
-    if (!isSignedIn) {
+    if (!isSignedIn || !accessToken) {
       setError('You must be signed in to save.');
       return false;
     }
 
     try {
-      const fileId = await findFileId();
+      const fileId = await findFileId(accessToken);
       const boundary = '-------314159265358979323846';
       const delimiter = "\r\n--" + boundary + "\r\n";
       const close_delim = "\r\n--" + boundary + "--";
@@ -154,6 +145,8 @@ export const useGoogleDrive = () => {
       const metadata = {
         name: FILENAME,
         mimeType: 'application/json',
+        // When creating a file, it must have 'appDataFolder' as a parent.
+        ...(fileId ? {} : { parents: ['appDataFolder'] })
       };
       
       const multipartRequestBody =
@@ -165,19 +158,25 @@ export const useGoogleDrive = () => {
         JSON.stringify(content, null, 2) +
         close_delim;
       
-      const requestPath = fileId 
-          ? `/upload/drive/v3/files/${fileId}` 
-          : '/upload/drive/v3/files';
+      const uploadUrl = fileId 
+          ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart` 
+          : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
       
       const method = fileId ? 'PATCH' : 'POST';
       
-      await window.gapi.client.request({
-          path: requestPath,
+      const response = await fetch(uploadUrl, {
           method: method,
-          params: { uploadType: 'multipart' },
-          headers: { 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
+          headers: { 
+            'Content-Type': `multipart/related; boundary="${boundary}"`,
+            'Authorization': `Bearer ${accessToken}`
+          },
           body: multipartRequestBody
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to save file');
+      }
 
       return true;
     } catch (e: any) {
@@ -189,22 +188,27 @@ export const useGoogleDrive = () => {
 
   const loadFile = async (): Promise<object | null> => {
     setError(null);
-     if (!isSignedIn) {
+     if (!isSignedIn || !accessToken) {
       setError('You must be signed in to load.');
       return null;
     }
 
     try {
-      const fileId = await findFileId();
+      const fileId = await findFileId(accessToken);
       if (!fileId) {
         setError('No saved state found in Google Drive.');
         return null;
       }
-      const response = await window.gapi.client.drive.files.get({
-        fileId: fileId,
-        alt: 'media',
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
-      return response.result;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to load file');
+      }
+
+      return response.json();
     } catch (e: any) {
        console.error("Error loading file", e);
        setError('Failed to load the file from Google Drive.');
@@ -212,5 +216,6 @@ export const useGoogleDrive = () => {
     }
   };
   
-  return { isGapiReady: gapiReady && gisReady, isSignedIn, userProfile, error, signIn, signOut, saveFile, loadFile };
+  // Keep isGapiReady name for compatibility with GoogleDriveSync component
+  return { isGapiReady: gisReady, isSignedIn, userProfile, error, signIn, signOut, saveFile, loadFile };
 };
