@@ -81,8 +81,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const showSunPath = useSimulationStore((state) => state.showSunPath);
   const setShowSunPath = useSimulationStore((state) => state.setShowSunPath);
 
-  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
-
   const weatherOptions = ['Sunny', 'Cloudy', 'Rainy'] as const;
   const transformOptions: {
     value: 'translate' | 'rotate' | 'scale';
@@ -135,18 +133,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           className="flex-grow p-4 pt-0 flex flex-col overflow-y-auto"
         >
           <hr className="my-6 border-slate-200" />
-          {isInIframe ? (
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-600 select-none">
-                  Google Drive Sync
-              </label>
-              <div className="p-3 text-center bg-slate-100 rounded-md">
-                <p className="text-sm text-slate-500">Disabled in iframe</p>
-              </div>
-            </div>
-          ) : (
-            <GoogleDriveSync />
-          )}
+          <GoogleDriveSync />
           <hr className="my-6 border-slate-200" />
           
           <div>
