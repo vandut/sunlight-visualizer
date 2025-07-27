@@ -5,11 +5,11 @@ import { GOOGLE_API_KEY, GOOGLE_CLIENT_ID } from '../../config';
 declare global {
   interface Window {
     gapi: any;
+    google: any; // For Google Identity Services
   }
 }
 
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-// Using appDataFolder scope ensures the app can only access a special, hidden folder.
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 const FILENAME = 'sunlight-visualizer-state.json';
 
@@ -20,89 +20,106 @@ interface UserProfile {
 }
 
 export const useGoogleDrive = () => {
-  const [isGapiReady, setIsGapiReady] = useState(false);
+  const [gapiReady, setGapiReady] = useState(false);
+  const [gisReady, setGisReady] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tokenClient, setTokenClient] = useState<any>(null);
 
-  const updateAuthStatus = useCallback((isUserSignedIn: boolean) => {
-    setIsSignedIn(isUserSignedIn);
-    if (isUserSignedIn) {
-      const profile = window.gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile();
-      setUserProfile({
-        email: profile.getEmail(),
-        name: profile.getName(),
-        imageUrl: profile.getImageUrl(),
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const response = await window.gapi.client.request({
+        'path': 'https://www.googleapis.com/oauth2/v3/userinfo'
       });
-      setError(null);
-    } else {
-      setUserProfile(null);
+      const profile = response.result;
+      setUserProfile({
+        email: profile.email,
+        name: profile.name,
+        imageUrl: profile.picture,
+      });
+    } catch (e: any) {
+      console.error("Error fetching user profile", e);
+      setError(`Could not fetch user profile. Error: ${e.result?.error?.message || e.message}`);
     }
   }, []);
 
+  // Effect to initialize the Google Identity Services (GIS) client
   useEffect(() => {
-    const initializeGapiClient = async () => {
-      // Wait for the gapi script to load the 'client' and 'auth2' libraries.
-      await new Promise<void>((resolve) => window.gapi.load('client:auth2', () => resolve()));
-      
+    const gisInit = () => {
+        try {
+            const client = window.google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: SCOPES,
+                callback: async (tokenResponse: any) => {
+                    if (tokenResponse.error) {
+                        setError(`Auth Error: ${tokenResponse.error_description || tokenResponse.error}`);
+                        return;
+                    }
+                    window.gapi.client.setToken(tokenResponse);
+                    setIsSignedIn(true);
+                    setError(null);
+                    await fetchUserProfile();
+                },
+            });
+            setTokenClient(client);
+            setGisReady(true);
+        } catch(e: any) {
+            setError(`Google Auth init failed: ${e.message}`);
+        }
+    };
+    
+    const checkGis = setInterval(() => {
+        if (typeof window.google !== 'undefined' && typeof window.google.accounts !== 'undefined') {
+            clearInterval(checkGis);
+            gisInit();
+        }
+    }, 100);
+
+    return () => clearInterval(checkGis);
+  }, [fetchUserProfile]);
+
+  // Effect to initialize the Google API (GAPI) client for Drive
+  useEffect(() => {
+    const gapiInit = async () => {
       try {
-        // Initialize both the Google API client and the auth2 library in a single call.
-        // This is a more robust method that avoids potential race conditions and initialization
-        // errors like "Invalid cookiePolicy" that can occur with separate init calls.
+        await new Promise<void>((resolve) => window.gapi.load('client', resolve));
         await window.gapi.client.init({
           apiKey: GOOGLE_API_KEY,
-          clientId: GOOGLE_CLIENT_ID,
-          scope: SCOPES,
           discoveryDocs: DISCOVERY_DOCS,
         });
-        
-        setIsGapiReady(true);
-        const authInstance = window.gapi.auth2.getAuthInstance();
-        
-        if (!authInstance) {
-          throw new Error('Failed to retrieve Google Auth instance after initialization.');
-        }
-
-        // Listen for sign-in state changes.
-        authInstance.isSignedIn.listen(updateAuthStatus);
-        
-        // Handle the initial sign-in state.
-        updateAuthStatus(authInstance.isSignedIn.get());
-
+        setGapiReady(true);
       } catch (e: any) {
-        console.error("Error initializing Google API client", e);
-        // Provide a more user-friendly error if client_id is missing.
-        if (e.details?.includes('invalid_client') || e.error === 'idpiframe_initialization_failed') {
-             setError('Google API Client ID is invalid or misconfigured. Please check your setup in Google Cloud Console.');
-        } else {
-             setError(`Failed to initialize Google services. Error: ${e.message || e.details}`);
-        }
+        setError(`Google API client failed to load: ${e.message}`);
       }
     };
 
     const checkGapi = setInterval(() => {
-        if (window.gapi && window.gapi.load) {
+        if (typeof window.gapi !== 'undefined' && typeof window.gapi.load === 'function') {
             clearInterval(checkGapi);
-            initializeGapiClient();
+            gapiInit();
         }
     }, 100);
 
     return () => clearInterval(checkGapi);
-  }, [updateAuthStatus]);
+  }, []);
 
-  const signIn = async () => {
-    if (!isGapiReady) return;
-    try {
-      await window.gapi.auth2.getAuthInstance().signIn();
-    } catch (e: any) {
-      console.error("Error signing in", e);
-      setError(`Sign-in failed. Error: ${e.details || e.message}`);
+  const signIn = () => {
+    if (!tokenClient) {
+        setError('Google Auth is not ready.');
+        return;
     }
+    setError(null);
+    // An empty prompt string triggers the default user experience.
+    tokenClient.requestAccessToken({ prompt: '' });
   };
 
   const signOut = () => {
-    if (!isGapiReady) return;
-    window.gapi.auth2.getAuthInstance().signOut();
+    // Clear the token from the GAPI client
+    window.gapi.client.setToken(null);
+    setIsSignedIn(false);
+    setUserProfile(null);
+    setError(null);
   };
 
   const findFileId = async (): Promise<string | null> => {
@@ -153,12 +170,6 @@ export const useGoogleDrive = () => {
           : '/upload/drive/v3/files';
       
       const method = fileId ? 'PATCH' : 'POST';
-
-      const resource: any = {};
-      if (!fileId) {
-        resource.name = FILENAME;
-        resource.parents = ['appDataFolder'];
-      }
       
       await window.gapi.client.request({
           path: requestPath,
@@ -201,5 +212,5 @@ export const useGoogleDrive = () => {
     }
   };
   
-  return { isGapiReady, isSignedIn, userProfile, error, signIn, signOut, saveFile, loadFile };
+  return { isGapiReady: gapiReady && gisReady, isSignedIn, userProfile, error, signIn, signOut, saveFile, loadFile };
 };
