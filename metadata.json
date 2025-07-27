@@ -1,0 +1,6 @@
+{
+  "name": "Sunlight Visualizer",
+  "description": "An interactive tool for visualizing the sunlight exposure of buildings using 3D models.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
