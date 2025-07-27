@@ -30,6 +30,7 @@ const CompassGuide = () => {
 
     const textFontSize = 0.1; // Relative to radius of 1
     const textPositionOffset = 1.15; // Place text just outside the circle
+    const characterSet = "NESW";
 
     return (
         <group ref={groupRef} position-y={0.01} renderOrder={999}> {/* Lift slightly and set render order */}
@@ -42,19 +43,19 @@ const CompassGuide = () => {
             />
 
             {/* Cardinal Direction Labels */}
-            <Text position={[0, 0, -textPositionOffset]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
+            <Text characters={characterSet} position={[0, 0, -textPositionOffset]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
                 N
                 <meshBasicMaterial attach="material" color="#334155" depthTest={false} />
             </Text>
-            <Text position={[0, 0, textPositionOffset]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
+            <Text characters={characterSet} position={[0, 0, textPositionOffset]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
                 S
                 <meshBasicMaterial attach="material" color="#334155" depthTest={false} />
             </Text>
-            <Text position={[textPositionOffset, 0, 0]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
+            <Text characters={characterSet} position={[textPositionOffset, 0, 0]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
                 E
                 <meshBasicMaterial attach="material" color="#334155" depthTest={false} />
             </Text>
-            <Text position={[-textPositionOffset, 0, 0]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
+            <Text characters={characterSet} position={[-textPositionOffset, 0, 0]} fontSize={textFontSize} anchorX="center" anchorY="middle" rotation={[-Math.PI / 2, 0, 0]}>
                 W
                 <meshBasicMaterial attach="material" color="#334155" depthTest={false} />
             </Text>
