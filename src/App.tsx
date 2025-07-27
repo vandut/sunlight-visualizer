@@ -7,7 +7,6 @@ import ControlPanel from './components/ControlPanel';
 import TransparencySlider from './components/TransparencySlider';
 import SunlightChart from './components/SunlightChart';
 import SceneViewer from './components/SceneViewer';
-import GeolocationInitializer from './components/GeolocationInitializer';
 import useSimulationStore from './stores/useSimulationStore';
 import LoadingSpinner from './components/LoadingSpinner';
 import ModelLoader from './components/ModelLoader';
@@ -40,7 +39,6 @@ function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden">
-      <GeolocationInitializer />
       <ModelLoader />
       {isModelLoading && <LoadingSpinner />}
       
