@@ -10,6 +10,8 @@ declare global {
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const FILENAME = 'sunlight-visualizer-state.json';
+const LOCAL_STORAGE_TOKEN_KEY = 'google_access_token';
+const LOCAL_STORAGE_PROFILE_KEY = 'google_user_profile';
 
 interface UserProfile {
   email: string;
@@ -25,6 +27,50 @@ export const useGoogleDrive = () => {
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
+  // This effect runs once on mount to restore the session from localStorage
+  useEffect(() => {
+    const storedToken = localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY);
+    const storedProfileJSON = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+
+    if (storedToken && storedProfileJSON) {
+      const validateAndHydrate = async () => {
+        // Optimistically set state to avoid UI flicker
+        setIsSignedIn(true);
+        setAccessToken(storedToken);
+        try {
+          setUserProfile(JSON.parse(storedProfileJSON));
+        } catch (e) { /* ignore parse error */ }
+        
+        // Validate token by making a lightweight API call
+        try {
+          const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { 'Authorization': `Bearer ${storedToken}` }
+          });
+          if (!response.ok) {
+            throw new Error('Token validation failed');
+          }
+          const profile = await response.json();
+          const freshUserProfile = {
+              email: profile.email,
+              name: profile.name,
+              imageUrl: profile.picture,
+          };
+          setUserProfile(freshUserProfile);
+          localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(freshUserProfile));
+        } catch (e) {
+          // Token is invalid/expired, clear storage and state
+          localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+          localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
+          setAccessToken(null);
+          setIsSignedIn(false);
+          setUserProfile(null);
+          setError('Your session has expired. Please sign in again.');
+        }
+      };
+      validateAndHydrate();
+    }
+  }, []); // Run only once on mount
+
   const fetchUserProfile = useCallback(async (token: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -35,11 +81,13 @@ export const useGoogleDrive = () => {
         throw new Error(errorData.error?.message || 'Failed to fetch user profile');
       }
       const profile = await response.json();
-      setUserProfile({
+      const newProfile = {
         email: profile.email,
         name: profile.name,
         imageUrl: profile.picture,
-      });
+      };
+      setUserProfile(newProfile);
+      localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(newProfile));
     } catch (e: any) {
       console.error("Error fetching user profile", e);
       setError(`Could not fetch user profile. Error: ${e.message}`);
@@ -61,6 +109,7 @@ export const useGoogleDrive = () => {
                         return;
                     }
                     const token = tokenResponse.access_token;
+                    localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, token);
                     setAccessToken(token);
                     setIsSignedIn(true);
                     setError(null);
@@ -98,6 +147,8 @@ export const useGoogleDrive = () => {
       // Revoke the token to effectively sign out
       window.google.accounts.oauth2.revoke(accessToken, () => {});
     }
+    localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
     setAccessToken(null);
     setIsSignedIn(false);
     setUserProfile(null);
